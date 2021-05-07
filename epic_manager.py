@@ -2,17 +2,13 @@ from config import Config
 from jira_helper import JiraHelper
 from confluence_helper import ConfluenceHelper
 from folder_helper import FolderHelper
-import datetime
-
-
-def log(log_text):
-    now = datetime.datetime.now()
-    now_date_time = now.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"{now_date_time} : {log_text}")
+import logging
 
 
 class EpicManager:
     def __init__(self):
+        self.logger = logging.getLogger("epic_manager_log")
+
         self.config = Config()
         self.config.load()
 
@@ -25,29 +21,39 @@ class EpicManager:
                                                   password=self.config.altassian_token,
                                                   space=self.config.confluence_space)
 
-        self.folder_helper = FolderHelper(folder_path=self.config.folder_target_path)
+        self.folder_helper = FolderHelper(self.config.folder_target_path)
 
     def manage_epic(self, epic_key):
         # Do the thing
-        log(f"Looking up Epic: {epic_key}")
-        result, epic_summary = self.jira_helper.get_issue_summary(issue_key=epic_key)
-        log(f"Found Epic: {epic_key}. Summary: {epic_summary}")
+        self.logger.info(f"Looking up Epic: {epic_key}")
+        result, epic = self.jira_helper.get_issue_details(issue_key=epic_key)
+        epic_key = epic["key"]
+        epic_summary = epic["summary"]
+        self.logger.info(f"Found Epic: {epic_key}. Summary: {epic_summary}")
+
+        # Get stories
+        if self.config.folder_include_stories:
+            self.logger.info(f"Looking up Stories for Epic: {epic_key}")
+            result, stories = self.jira_helper.get_story_details(epic_key)
+            self.logger.info(f"Got Stories")
+        else:
+            stories = []
 
         page_title = f"{epic_key}: {epic_summary}"
 
-        log(f"Creating confluence page: {page_title}")
+        self.logger.info(f"Creating confluence page: {page_title}")
         url_format = '<a href="{link}">{text}</a>'
         jira_url = url_format.format(link=f"{self.config.altassian_url}/browse/{epic_key}", text=f"{epic_key}")
         body = f"Jira link: {jira_url}"
-        result, page = self.confluence_helper.create_page(title=page_title, body=body,
-                                                          parent_title=self.config.confluence_parent_page)
-        log(f"Created confluence page: {page}")
+        # result, page = self.confluence_helper.create_page(title=page_title, body=body,
+        #                                                   parent_title=self.config.confluence_parent_page)
+        # self.logger.info(f"Created confluence page: {page}")
 
         folder_name = f"{epic_key} {epic_summary}"
-        folder_path = f"{folder_name}"
 
-        log(f"Creating folder: {folder_path}")
-        result, folder = self.folder_helper.create_folder(folder_path=folder_path)
-        log(f"Created folder: {folder_path}")
+        self.logger.info(f"Creating Filesystem folder: {folder_name}")
+        result = self.folder_helper.create_epic_folder(epic=epic, include_stories=self.config.folder_include_stories,
+                                                       stories=stories)
+        self.logger.info(f"Created folder: {folder_name}")
 
         return True

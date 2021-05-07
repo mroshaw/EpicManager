@@ -1,1 +1,5 @@
 atlassian-python-api==3.4.1
+SharePlum==0.5.1
+stdiomask==0.0.6
+requests_ntlm==1.1.0
+
